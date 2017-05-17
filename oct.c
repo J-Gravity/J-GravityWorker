@@ -76,12 +76,17 @@ int main(void)
 	tree_it_up(t->root);
 	//scan the tree for leaf nodes and return them in a list
 	t_cell **leaves = enumerate_leaves(t->root);
-	//set up space for return values
-	t_ret *rets = (t_ret *)malloc(sizeof(t_ret) * (count_cell_array(leaves) + 1));
-	//for each leaf node, compute the forces according to Barnes-Hut
+	//set up space for workunits and their results
+	int unitcount = count_cell_array(leaves);
+	t_workunit **units = (t_workunit **)malloc(sizeof(t_workunit*) * (unitcount));
+	t_resultunit **results = (t_resultunit **)malloc(sizeof(t_resultunit*) * (unitcount));
+	//for each leaf node, make work units
 	for (int i = 0; leaves[i]; i++)
-		rets[i] = compute_cell(leaves[i], t);
+		units[i] = make_workunit_for_cell(leaves[i], t, i);
+	/*
+		THIS IS THE MYSTERY BOX WHERE WE SEND THEM TO THE WORKERS
+	*/
 	//replace current values with results (ie, step forward)
 	for (int i = 0; leaves[i]; i++)
-		update(leaves[i], rets[i]);
+		update(leaves[i], results[i]);
 }

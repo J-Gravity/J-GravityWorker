@@ -120,49 +120,54 @@ t_body **bodies_from_cells(t_cell **cells)
 	return (bodies);
 }
 
-// typedef struct          s_work_unit
-// {
-//     t_cell              cell;
-//     t_cell              **adjoining_cells;
-//     int                 adjoining_cells_cnt;
-//     char                compute_class;
-//     char                complete;
-// }                       t_work_unit;
+t_workunit *new_workunit(t_body **local, t_body **neighborhood, cl_float4 force_bias, int index)
+{
+	//constructor for workunit.
+	//note that memory is copied here.
+	t_workunit *w;
 
+	w = (t_workunit *)malloc(sizeof(t_workunit));
+	w->id = index;
+	w->localcount = count_bodies(local);
+	w->neighborcount = count_bodies(neighborhood);
+	w->force_bias = force_bias;
+	w->local_bodies = (t_body *)malloc(sizeof(t_body) * w->localcount);
+	w->neighborhood = (t_body *)malloc(sizeof(t_body) * w->neighborcount);
+	for (int i = 0; i < w->localcount; i++)
+		w->local_bodies[i] = local[i][0];
+	for (int i = 0; i < w->neighborcount; i++)
+		w->neighborhood[i] = neighborhood[i][0];
+	return (w);
 
+}
 
-t_ret compute_cell(t_cell *cell, t_octree *t)
+t_workunit *make_workunit_for_cell(t_cell *cell, t_octree *t, int index)
 {
 	t_cell **inners;
 	t_body **direct_bodies;
 
 	//skip empty cells (yes there are empty cells)
 	if (count_bodies(cell->bodies) == 0)
-		return (t_ret){NULL, NULL};
+		return NULL;
 	//traverse tree doing faraway calculations and enumerating nearby cells (see above)
 	inners = find_inners_do_outers(cell, t->root, t);
 	//use the result to make a list of particles we need to direct compare against
 	direct_bodies = bodies_from_cells(inners);
-	//GPU will do cell->bodies X direct_bodies with a bias of cell->force_bias, then integrate
-	/*
-		right here is where the network code will step in. instead of computing on a local gpu,
-		we'll ship off our work unit that we just made and wait for it to be returned, completed.
-	*/
-	return(gpu_magic(cell->bodies, direct_bodies, cell->force_bias));
+	return (new_workunit(cell->bodies, direct_bodies, cell->force_bias, index));
 }
 
-void update(t_cell *c, t_ret r)
+void update(t_cell *c, t_resultunit *r)
 {
 	//update our bodies with the results of the gpu calculation
 	int count = count_bodies(c->bodies);
 	for (int i = 0; i < count; i++)
 	{
-		c->bodies[i]->position.x = r.P[i].x;
-		c->bodies[i]->position.y = r.P[i].y;
-		c->bodies[i]->position.z = r.P[i].z;
-		c->bodies[i]->velocity.x = r.V[i].x;
-		c->bodies[i]->velocity.y = r.V[i].y;
-		c->bodies[i]->velocity.z = r.V[i].z;
+		c->bodies[i]->position.x = r->local_bodies[i].position.x;
+		c->bodies[i]->position.y = r->local_bodies[i].position.y;
+		c->bodies[i]->position.z = r->local_bodies[i].position.z;
+		c->bodies[i]->velocity.x = r->local_bodies[i].velocity.x;
+		c->bodies[i]->velocity.y = r->local_bodies[i].velocity.y;
+		c->bodies[i]->velocity.z = r->local_bodies[i].velocity.z;
 		c->force_bias = (cl_float4){0, 0, 0, 0};
 	}
 }
