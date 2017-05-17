@@ -186,7 +186,7 @@ t_body ***scoop_octants(t_body **bodies)
 	int count = count_bodies(bodies);
 	for (int i = 0; i < 8; i++)
 	{
-		ret[i] = (t_body **)malloc(sizeof(t_body *) * count + 1);
+		ret[i] = (t_body **)malloc(sizeof(t_body *) * (count + 1));
 		ret[i][count] = NULL;
 	}
 	int indices[8] = {0, 0, 0, 0, 0, 0, 0, 0};
@@ -351,31 +351,6 @@ t_vector neg_vec(t_vector v)
 	return (t_vector){-1 * v.x, -1 * v.y, -1 * v.z, -1 * v.w};
 }
 
-int bound_eq(t_bounds a, t_bounds b)
-{
-	if (a.xmin == b.xmin && a.xmax == b.xmax)
-		if (a.ymin == b.ymin && a.ymax == b.ymax)
-			if (a.zmin == b.zmin && a.zmax == b.zmax)
-				return (1);
-	return (0);
-}
-
-void pair_force(t_body *i, t_body *j)
-{
-	t_vector r;
-
-//needs negatives for janus
-	r.x = j->position.x - i->position.x;
-	r.y = j->position.y - i->position.y;
-	r.z = j->position.z - i->position.z;
-
-	float distSq = r.x * r.x + r.y * r.y + r.z * r.z + SOFTENING;
-	float invDist = 1.0 / sqrt(distSq);
-	float invDistCube = invDist * invDist * invDist;
-    float f = j->position.w * invDistCube;
-    i->acceleration = vadd(i->acceleration, (t_vector){r.x * f, r.y * f, r.z * f});
-}
-
 void pair_force_cell(t_cell *i, t_cell *j)
 {
 	t_vector r;
@@ -389,24 +364,6 @@ void pair_force_cell(t_cell *i, t_cell *j)
 	float invDistCube = invDist * invDist * invDist;
     float f = j->center.w * invDistCube;
     i->force_bias = vadd(i->force_bias, (t_vector){r.x * f, r.y * f, r.z * f});
-}
-
-void internal_accelerations(t_cell *cell)
-{
-	if (cell->children)
-		for (int i = 0; i < 8; i++)
-			internal_accelerations(cell->children[i]);
-	else
-	{
-
-		for (int i = 0; cell->bodies[i]; i++)
-			for (int j = 0; cell->bodies[j]; j++)
-			{
-				if (i == j)
-					continue ;
-				pair_force(cell->bodies[i], cell->bodies[j]);
-			}
-	}
 }
 
 //above is oversimplified, you have to compare directly with neighbors, what i'm calling N x (N + M)
@@ -434,7 +391,6 @@ t_cell **find_inners_do_outers(t_cell *cell, t_cell *root, t_octree *t)
 	t_cell **ret;
 	t_cell ***returned;
 
-	//cannot call this on the actual root, needs a loop around it for the first 8
 	if (root != t->root && multipole_acceptance_criterion(cell, root) < THETA)
 	{
 		//printf("cell is far\n");
@@ -516,57 +472,14 @@ t_ret compute_cell(t_cell *cell, t_octree *t)
 	return(gpu_magic(cell->bodies, direct_bodies, cell->force_bias));
 }
 
-
-
-void set_bias(t_cell *c)
-{
-	//after external forces are calculated, set accel of each body to net force before doing local
-	for (int i = 0; c->bodies[i]; i++)
-		c->bodies[i]->acceleration = c->force_bias;
-}
-
-void external_accelerations(t_cell **cells)
-{
-	for (int i = 0; cells[i]; i++)
-		cells[i]->force_bias = (t_vector){0, 0, 0, 0};
-	for (int i = 0; cells[i]; i++)
-		for (int j = i + 1; cells[j]; j++)
-			pair_force_cell(cells[i], cells[j]);
-	for (int i = 0; cells[i]; i++)
-		set_bias(cells[i]);
-}
-
-void integrate(t_body **bodies)
-{
-	for (int i = 0; bodies[i]; i++)
-	{
-		bodies[i]->velocity.x += G * TIME_STEP * bodies[i]->acceleration.x;
-		bodies[i]->velocity.y += G * TIME_STEP * bodies[i]->acceleration.y;
-		bodies[i]->velocity.z += G * TIME_STEP * bodies[i]->acceleration.z;
-
-		bodies[i]->position.x += TIME_STEP * bodies[i]->velocity.x;
-		bodies[i]->position.y += TIME_STEP * bodies[i]->velocity.y;
-		bodies[i]->position.z += TIME_STEP * bodies[i]->velocity.z;
-
-		bodies[i]->acceleration = (t_vector){0, 0, 0, 0};
-	}
-}
-
-// typedef struct s_ret
-// {
-//     cl_float4 *P;
-//     cl_float4 *V;
-// }               t_ret;
-
 void update(t_cell *c, t_ret r)
 {
 	int count = count_bodies(c->bodies);
 	for (int i = 0; i < count; i++)
 	{
-		if (i == 0)
-			printf("body 0 was at %.3f %.3f %.3f and is now at %.3f %.3f %.3f, %f\n", \
-				c->bodies[i]->position.x, c->bodies[i]->position.y, c->bodies[i]->position.z, \
-				r.P[i].x, r.P[i].y, r.P[i].z, r.P[i].w);
+		// printf("body %d was at %f %f %f and is now at %f %f %f, %f\nmessage %f\n", i, \
+		// 	c->bodies[i]->position.x, c->bodies[i]->position.y, c->bodies[i]->position.z, \
+		// 	r.P[i].x, r.P[i].y, r.P[i].z, r.P[i].w, r.V[i].w);
 		c->bodies[i]->position.x = r.P[i].x;
 		c->bodies[i]->position.y = r.P[i].y;
 		c->bodies[i]->position.z = r.P[i].z;
@@ -596,11 +509,11 @@ int main(void)
 	printf("making bodies took %lu, tree-ing was %lu, enumerate was %lu, total %lu\n", \
 			bods - start, tree - bods, enumerate - tree, enumerate - start);
 	t_ret *rets = (t_ret *)malloc(sizeof(t_ret) * (count_cell_array(leaves) + 1));
-	for (int i = 0; leaves[i]; i++)
-		rets[i] = compute_cell(leaves[i], t);
+	//for (int i = 0; leaves[i]; i++)
+		rets[8] = compute_cell(leaves[8], t);
 	clock_t crunch = clock();
-	for (int i = 0; leaves[i]; i++)
-		update(leaves[i], rets[i]);
+	//for (int i = 0; leaves[i]; i++)
+		update(leaves[8], rets[8]);
 	clock_t integrate = clock();
 	printf("gpu phase took %lu, setting new values took %lu total %lu\n", crunch - enumerate, integrate - crunch, integrate - start);
 }
@@ -611,7 +524,6 @@ to do list:
 
 add visualizer
 keep fingers crossed
-free gpu stuff
 nXm probably needs to become mXn for higher threadcount ? it's fast already, it seems?
 mcount is still really high really frequently.
 for theta = 2, M seems reasonably sized.

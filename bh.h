@@ -12,12 +12,12 @@
 #include <stdlib.h>
 
 
-#define LEAF_THRESHOLD pow(2, 15)
-#define BODYCOUNT pow(2, 20)
-#define BOUNDMAG 7
+#define LEAF_THRESHOLD pow(2, 10)
+#define BODYCOUNT pow(2, 15)
+#define BOUNDMAG 10
 #define G 1.327 * __exp10(13) //kilometers, solar masses, (km/s)^2
-#define SOFTENING 1000
-#define TIME_STEP 10000
+#define SOFTENING 1000000
+#define TIME_STEP 1
 
 #define THETA 1.5 //once theta is 1 we always compare peers (neat!)
 

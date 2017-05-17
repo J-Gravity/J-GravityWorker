@@ -84,6 +84,11 @@ size_t nearest_pow_2(size_t n)
     return(pow(2, floor(log2(n)) + 1));
 }
 
+size_t nearest_mult_256(size_t n)
+{
+    return (((n / 256) + 1) * 256);
+}
+
 // vvv N CROSS M vvv
 
 t_ret crunch_NxM(cl_float4 *N, cl_float4 *V, cl_float4 *M, size_t ncount, size_t mcount, cl_float4 force_bias)
@@ -98,6 +103,15 @@ t_ret crunch_NxM(cl_float4 *N, cl_float4 *V, cl_float4 *M, size_t ncount, size_t
 
     cl_float4 *output_p = (cl_float4 *)calloc(ncount, sizeof(cl_float4));
     cl_float4 *output_v = (cl_float4 *)calloc(ncount, sizeof(cl_float4));
+
+    cl_float4 *FB = (cl_float4 *)calloc(ncount, sizeof(cl_float4));
+    for (int i = 0; i < ncount; i++)
+        FB[i] = force_bias;
+    // printf("\n\n\nBEFORE\n\n\n");
+    // for (int i = 0; i < ncount; i++)
+    //     printf("nx %f ny %f nz %f nw %f vx %f vy %f vz %f\n", N[i].x, N[i].y, N[i].z, N[i].w, V[i].x, V[i].y, V[i].z);
+    // for (int i = 0; i < mcount; i++)
+    //     printf("mx %f my %f mz %f mw %f\n", M[i].x, M[i].y, M[i].z, M[i].w);
 
     //device-side data
     cl_mem      d_N_start;
@@ -117,13 +131,14 @@ t_ret crunch_NxM(cl_float4 *N, cl_float4 *V, cl_float4 *M, size_t ncount, size_t
     //copy over initial data to device locations
     cl_event load;
     clEnqueueWriteBuffer(context->commands, d_N_start, CL_TRUE, 0, sizeof(cl_float4) * ncount, N, 0, NULL, NULL);
-    clEnqueueWriteBuffer(context->commands, d_M, CL_TRUE, 0, sizeof(cl_float4) * ncount, M, 0, NULL, NULL);
-    clEnqueueFillBuffer(context->commands, d_A, &force_bias, sizeof(cl_float4), 0, sizeof(cl_float4) * ncount, 0, NULL, NULL);
+    clEnqueueWriteBuffer(context->commands, d_M, CL_TRUE, 0, sizeof(cl_float4) * mcount, M, 0, NULL, NULL);
+    clEnqueueWriteBuffer(context->commands, d_A, CL_TRUE, 0, sizeof(cl_float4) * ncount, FB, 0, NULL, NULL);
     clEnqueueWriteBuffer(context->commands, d_V_start, CL_TRUE, 0, sizeof(cl_float4) * ncount, V, 0, NULL, &load);
     //NB need an event handling here (can I just trust they'll finish in order?)
     clFinish(context->commands);
 
-    size_t global = nearest_pow_2(ncount);
+    size_t global = ncount;
+    size_t mscale = mcount;
     size_t local = GROUPSIZE < global ? GROUPSIZE : global;
     float soften = SOFTENING;
     float timestep = TIME_STEP;
@@ -142,8 +157,8 @@ t_ret crunch_NxM(cl_float4 *N, cl_float4 *V, cl_float4 *M, size_t ncount, size_t
     clSetKernelArg(k_nbody, 7, sizeof(float), &soften);
     clSetKernelArg(k_nbody, 8, sizeof(float), &timestep);
     clSetKernelArg(k_nbody, 9, sizeof(float), &grav);
-    clSetKernelArg(k_nbody, 10, sizeof(unsigned int), &ncount);
-    clSetKernelArg(k_nbody, 11, sizeof(unsigned int), &mcount);
+    clSetKernelArg(k_nbody, 10, sizeof(unsigned int), &global);
+    clSetKernelArg(k_nbody, 11, sizeof(unsigned int), &mscale);
     
     //printf("global is %zu, local is %zu\n", global, local);
     //printf("going onto the GPU\n");
@@ -163,6 +178,13 @@ t_ret crunch_NxM(cl_float4 *N, cl_float4 *V, cl_float4 *M, size_t ncount, size_t
     clReleaseMemObject(d_V_end);
     clReleaseMemObject(d_A);
 
+    // printf("\n\n\nAFTER\n\n\n");
+    // for (int i = 0; i < ncount; i++)
+    // {
+    //     printf("nx %f ny %f nz %f nw %f vx %f vy %f vz %f\n", output_p[i].x, output_p[i].y, output_p[i].z, output_p[i].w, output_v[i].x, output_v[i].y, output_v[i].z);
+    //     printf("message %f\n", output_v[i].w);
+    // }
+
     return ((t_ret){output_p, output_v}); //whoops it needs to return positions and vels. maybe this shouldn't integrate?
 }
 
@@ -177,10 +199,12 @@ t_ret gpu_magic(t_body **N0, t_body **M0, t_vector force_bias)
     cl_float4 fb = {force_bias.x, force_bias.y, force_bias.z, force_bias.w};
     size_t ncount = count_bodies(N0);
     size_t mcount = count_bodies(M0);
+    size_t npadding = nearest_mult_256(ncount) - ncount;
+    size_t mpadding = nearest_mult_256(mcount) - mcount; //padding should be to nearest multiple of 256, not nearest power of 2.
     crosstotal += ncount * mcount;
-    cl_float4 *N = (cl_float4 *)calloc(ncount, sizeof(cl_float4));
-    cl_float4 *M = (cl_float4 *)calloc(mcount, sizeof(cl_float4));
-    cl_float4 *V = (cl_float4 *)calloc(ncount, sizeof(cl_float4));
+    cl_float4 *N = (cl_float4 *)calloc(ncount + npadding, sizeof(cl_float4));
+    cl_float4 *M = (cl_float4 *)calloc(mcount + mpadding, sizeof(cl_float4));
+    cl_float4 *V = (cl_float4 *)calloc(ncount + npadding, sizeof(cl_float4));
     for (int i = 0; N0[i]; i++)
     {
         N[i] = vec_to_f4(N0[i]->position);
@@ -188,7 +212,6 @@ t_ret gpu_magic(t_body **N0, t_body **M0, t_vector force_bias)
     }
     for (int i = 0; M0[i]; i++)
         M[i] = vec_to_f4(M0[i]->position);
-    //printf("sending it into the crunch. ncount is %zu, mcount %zu\n", ncount, mcount);
-    //printf("running total %ld\n", crosstotal);
-    return(crunch_NxM(N, V, M, ncount, mcount, fb));
+    printf("sending it into the crunch. ncount is %zu, mcount %zu\nnpadding %zu mpadding%zu\n", ncount, mcount, npadding, mpadding);
+    return(crunch_NxM(N, V, M, ncount + npadding, mcount + mpadding, fb));
 }
