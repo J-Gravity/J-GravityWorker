@@ -13,7 +13,7 @@
 
 
 #define LEAF_THRESHOLD pow(2, 14)
-#define BODYCOUNT pow(2, 22)
+#define BODYCOUNT pow(2, 20)
 #define BOUNDMAG 10
 #define G 1.327 * __exp10(13) //kilometers, solar masses, (km/s)^2
 #define SOFTENING 1000000
@@ -64,34 +64,10 @@ typedef struct s_sim
     size_t count;
 }               t_sim;
 
-typedef struct s_env
-{
-    void    *mlx;
-    void    *win;
-    void    *img;
-
-    t_context *cont;
-    t_sim *sim;
-    cl_event render;
-    cl_event read;
-    cl_float4 *stars;
-    int flag;
-}               t_env;
-
-typedef struct s_vector
-{
-	float x;
-	float y;
-	float z;
-	float w;
-}				t_vector;
-
 typedef struct s_body
 {
-	t_vector	position;
-	t_vector 	velocity;
-	t_vector	acceleration;
-    int        oct;
+	cl_float4	position;
+	cl_float4 	velocity;
 }				t_body;
 
 typedef struct s_bounds
@@ -109,10 +85,27 @@ typedef struct s_cell
 	t_body **bodies;
 	struct s_cell *parent;
 	struct s_cell **children;
-	t_vector center;
-	t_vector force_bias;
+	cl_float4 center;
+	cl_float4 force_bias;
 	t_bounds bounds;
 }				t_cell;
+
+typedef struct s_workunit
+{
+	int			identifier;
+	int			localcount;
+	int			neighborcount;
+	t_body		*local_bodies;
+	t_body		*neighborhood;
+	cl_float4	force_bias;
+}				t_workunit;
+
+typedef struct s_resultunit
+{
+	int		identifier;
+	int		localcount;
+	t_body	*local_bodies;
+}
 
 typedef struct s_octree
 {
@@ -130,17 +123,17 @@ typedef struct s_ret
 
 
 t_ret crunch_NxM(cl_float4 *N, cl_float4 *M, cl_float4 *V, size_t ncount, size_t mcount, cl_float4 force_bias);
-t_ret gpu_magic(t_body **N0, t_body **M0, t_vector force_bias);
+t_ret gpu_magic(t_body **N0, t_body **M0, cl_float4 force_bias);
 
 int count_bodies(t_body **bodies);
 
 
 void print_bounds(t_bounds bounds);
-void print_vec(t_vector v);
+void print_vec(cl_float4 v);
 void print_body(t_body *b);
 float rand_float(float max);
-t_vector neg_vec(t_vector v);
-t_vector vadd(t_vector a, t_vector b);
+cl_float4 neg_vec(cl_float4 v);
+cl_float4 vadd(cl_float4 a, cl_float4 b);
 t_body *rand_body(int mag);
 
 void pair_force_cell(t_cell *i, t_cell *j);
@@ -160,6 +153,6 @@ t_cell **enumerate_leaves(t_cell *root);
 
 int count_cell_array(t_cell **cells);
 int count_leaves(t_cell *root);
-t_vector center_of_mass(t_cell *c, t_body **bodies);
+cl_float4 center_of_mass(t_cell *c, t_body **bodies);
 int count_bodies(t_body **bodies);
 t_body **demo_bodies(size_t n, int mag);

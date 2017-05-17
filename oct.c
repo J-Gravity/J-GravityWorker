@@ -23,20 +23,20 @@ int count_bodies(t_body **bodies)
 	return i;
 }
 
-t_vector center_of_mass(t_cell *c, t_body **bodies)
+cl_float4 center_of_mass(t_cell *c, t_body **bodies)
 {
 	//center of mass (sum of all positions divided by total mass)
 	//NB this is currently assuming all masses are 1.
-	t_vector v;
+	cl_float4 v;
 
-	v = (t_vector){0,0,0, count_bodies(bodies)};
+	v = (cl_float4){0,0,0, count_bodies(bodies)};
 	if (v.w == 0)
 	{
-		return (t_vector){xmid, ymid, zmid, 0};
+		return (cl_float4){xmid, ymid, zmid, 0};
 	}
 	for (int i = 0; bodies[i]; i++)
 		v = vadd(v, bodies[i]->position);
-	return (t_vector){v.x / v.w, v.y / v.w, v.z / v.w, v.w};
+	return (cl_float4){v.x / v.w, v.y / v.w, v.z / v.w, v.w};
 }
 
 int count_leaves(t_cell *root)

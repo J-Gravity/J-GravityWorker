@@ -128,14 +128,17 @@ t_ret crunch_NxM(cl_float4 *N, cl_float4 *V, cl_float4 *M, size_t ncount, size_t
     d_A = clCreateBuffer(context->context, CL_MEM_READ_WRITE, sizeof(cl_float4) * ncount, NULL, NULL);
     d_V_end = clCreateBuffer(context->context, CL_MEM_WRITE_ONLY, sizeof(cl_float4) * ncount, NULL, NULL);
     d_N_end = clCreateBuffer(context->context, CL_MEM_WRITE_ONLY, sizeof(cl_float4) * ncount, NULL, NULL);
+
+    //all of that happens instantly and therefore we don't need events involved
+
     //copy over initial data to device locations
-    cl_event load;
-    clEnqueueWriteBuffer(context->commands, d_N_start, CL_TRUE, 0, sizeof(cl_float4) * ncount, N, 0, NULL, NULL);
-    clEnqueueWriteBuffer(context->commands, d_M, CL_TRUE, 0, sizeof(cl_float4) * mcount, M, 0, NULL, NULL);
-    clEnqueueWriteBuffer(context->commands, d_A, CL_TRUE, 0, sizeof(cl_float4) * ncount, FB, 0, NULL, NULL);
-    clEnqueueWriteBuffer(context->commands, d_V_start, CL_TRUE, 0, sizeof(cl_float4) * ncount, V, 0, NULL, &load);
-    //NB need an event handling here (can I just trust they'll finish in order?)
-    clFinish(context->commands);
+    cl_event eN, eM, eA, eV;
+    clEnqueueWriteBuffer(context->commands, d_N_start, CL_TRUE, 0, sizeof(cl_float4) * ncount, N, 0, NULL, &eN);
+    clEnqueueWriteBuffer(context->commands, d_M, CL_TRUE, 0, sizeof(cl_float4) * mcount, M, 0, NULL, &eM);
+    clEnqueueWriteBuffer(context->commands, d_A, CL_TRUE, 0, sizeof(cl_float4) * ncount, FB, 0, NULL, &eA);
+    clEnqueueWriteBuffer(context->commands, d_V_start, CL_TRUE, 0, sizeof(cl_float4) * ncount, V, 0, NULL, &eV);
+
+    cl_event loadevents[4] = {eN, eM, eA, eV};
 
     size_t global = ncount;
     size_t mscale = mcount;
@@ -161,14 +164,15 @@ t_ret crunch_NxM(cl_float4 *N, cl_float4 *V, cl_float4 *M, size_t ncount, size_t
     //printf("global is %zu, local is %zu\n", global, local);
     //printf("going onto the GPU\n");
     
-    cl_event tick;
-    cl_event tock;
-    err = clEnqueueNDRangeKernel(context->commands, k_nbody, 1, NULL, &global, &local, 0, NULL, &tick);
+    cl_event compute;
+    cl_event offN, offV;
+    err = clEnqueueNDRangeKernel(context->commands, k_nbody, 1, NULL, &global, &local, 4, loadevents, &compute);
     checkError(err, "Enqueueing kernel");
-    clEnqueueReadBuffer(context->commands, d_N_end, CL_TRUE, 0, sizeof(cl_float4) * count, output_p, 1, &tick, &tock);
-    clEnqueueReadBuffer(context->commands, d_V_end, CL_TRUE, 0, sizeof(cl_float4) * count, output_v, 1, &tick, &tock);
-    clFinish(context->commands); //eventually, don't do this, do some cool async thing where I return an event (ie tock)
-    //printf("gpu finished\n");
+    clEnqueueReadBuffer(context->commands, d_N_end, CL_TRUE, 0, sizeof(cl_float4) * count, output_p, 1, &compute, &offN);
+    clEnqueueReadBuffer(context->commands, d_V_end, CL_TRUE, 0, sizeof(cl_float4) * count, output_v, 1, &compute, &offV);
+    clFinish(context->commands);
+
+    //these will have to happen elsewhere in final but here is good for now
     clReleaseMemObject(d_N_start);
     clReleaseMemObject(d_N_end);
     clReleaseMemObject(d_M);
@@ -186,12 +190,12 @@ t_ret crunch_NxM(cl_float4 *N, cl_float4 *V, cl_float4 *M, size_t ncount, size_t
     return ((t_ret){output_p, output_v}); //whoops it needs to return positions and vels. maybe this shouldn't integrate?
 }
 
-cl_float4 vec_to_f4(t_vector v)
+cl_float4 vec_to_f4(cl_float4 v)
 {
     return ((cl_float4){v.x, v.y, v.z, v.w});
 }
 
-t_ret gpu_magic(t_body **N0, t_body **M0, t_vector force_bias)
+t_ret gpu_magic(t_body **N0, t_body **M0, cl_float4 force_bias)
 {
     static long crosstotal;
     cl_float4 fb = {force_bias.x, force_bias.y, force_bias.z, force_bias.w};

@@ -3,7 +3,7 @@
 void pair_force_cell(t_cell *i, t_cell *j)
 {
 	//compute the force between two distant cells, treating them as single particles
-	t_vector r;
+	cl_float4 r;
 
 	r.x = j->center.x - i->center.x;
 	r.y = j->center.y - i->center.y;
@@ -13,7 +13,7 @@ void pair_force_cell(t_cell *i, t_cell *j)
 	float invDist = 1.0 / sqrt(distSq);
 	float invDistCube = invDist * invDist * invDist;
     float f = j->center.w * invDistCube * i->center.w > 0 ? 1 : -1;
-    i->force_bias = vadd(i->force_bias, (t_vector){r.x * f, r.y * f, r.z * f});
+    i->force_bias = vadd(i->force_bias, (cl_float4){r.x * f, r.y * f, r.z * f});
 }
 
 float multipole_acceptance_criterion(t_cell *us, t_cell *them)
@@ -22,7 +22,7 @@ float multipole_acceptance_criterion(t_cell *us, t_cell *them)
 	//if the value returned is less than THETA, that cell is far
 	float s;
 	float d;
-	t_vector r;
+	cl_float4 r;
 
 	s = them->bounds.xmax - them->bounds.xmin;
 	r.x = them->center.x - us->center.x;
@@ -120,6 +120,17 @@ t_body **bodies_from_cells(t_cell **cells)
 	return (bodies);
 }
 
+// typedef struct          s_work_unit
+// {
+//     t_cell              cell;
+//     t_cell              **adjoining_cells;
+//     int                 adjoining_cells_cnt;
+//     char                compute_class;
+//     char                complete;
+// }                       t_work_unit;
+
+
+
 t_ret compute_cell(t_cell *cell, t_octree *t)
 {
 	t_cell **inners;
@@ -133,6 +144,10 @@ t_ret compute_cell(t_cell *cell, t_octree *t)
 	//use the result to make a list of particles we need to direct compare against
 	direct_bodies = bodies_from_cells(inners);
 	//GPU will do cell->bodies X direct_bodies with a bias of cell->force_bias, then integrate
+	/*
+		right here is where the network code will step in. instead of computing on a local gpu,
+		we'll ship off our work unit that we just made and wait for it to be returned, completed.
+	*/
 	return(gpu_magic(cell->bodies, direct_bodies, cell->force_bias));
 }
 
@@ -148,6 +163,6 @@ void update(t_cell *c, t_ret r)
 		c->bodies[i]->velocity.x = r.V[i].x;
 		c->bodies[i]->velocity.y = r.V[i].y;
 		c->bodies[i]->velocity.z = r.V[i].z;
-		c->force_bias = (t_vector){0, 0, 0, 0};
+		c->force_bias = (cl_float4){0, 0, 0, 0};
 	}
 }

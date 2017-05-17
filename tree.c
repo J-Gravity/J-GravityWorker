@@ -11,7 +11,7 @@ t_cell *init_cell(t_body **bodies, t_cell *parent, t_bounds bounds)
 	c->children = NULL;
 	c->bounds = bounds;
 	c->center = center_of_mass(c, bodies);
-	c->force_bias = (t_vector){0, 0, 0, 0};
+	c->force_bias = (cl_float4){0, 0, 0, 0};
 	return (c);
 }
 
@@ -38,16 +38,16 @@ void 	paint_bodies_octants(t_body **bodies, t_cell *c)
 			if (bodies[i]->position.y < ymid)
 			{
 				if (bodies[i]->position.z < zmid)
-					bodies[i]->oct = 0;
+					bodies[i]->velocity.w = 0;
 				else
-					bodies[i]->oct = 1;
+					bodies[i]->velocity.w = 1;
 			}
 			else
 			{
 				if (bodies[i]->position.z < zmid)
-					bodies[i]->oct = 2;
+					bodies[i]->velocity.w = 2;
 				else
-					bodies[i]->oct = 3;
+					bodies[i]->velocity.w = 3;
 			}
 		}
 		else
@@ -55,16 +55,16 @@ void 	paint_bodies_octants(t_body **bodies, t_cell *c)
 			if (bodies[i]->position.y < ymid)
 			{
 				if (bodies[i]->position.z < zmid)
-					bodies[i]->oct = 6;
+					bodies[i]->velocity.w = 6;
 				else
-					bodies[i]->oct = 7;
+					bodies[i]->velocity.w = 7;
 			}
 			else
 			{
 				if (bodies[i]->position.z < zmid)
-					bodies[i]->oct = 4;
+					bodies[i]->velocity.w = 4;
 				else
-					bodies[i]->oct = 5;
+					bodies[i]->velocity.w = 5;
 			}
 		}
 	}
@@ -84,8 +84,8 @@ t_body ***scoop_octants(t_body **bodies)
 	int indices[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 	for (int i = 0; bodies[i]; i++)
 	{
-		ret[bodies[i]->oct][indices[bodies[i]->oct]] = bodies[i];
-		indices[bodies[i]->oct] += 1;
+		ret[(int)bodies[i]->velocity.w][indices[(int)bodies[i]->velocity.w]] = bodies[i];
+		indices[(int)bodies[i]->velocity.w] += 1;
 	}
 	int sum = 0;
 	for (int i = 0; i < 8; i++)
