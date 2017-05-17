@@ -12,8 +12,8 @@
 #include <stdlib.h>
 
 
-#define LEAF_THRESHOLD pow(2, 10)
-#define BODYCOUNT pow(2, 15)
+#define LEAF_THRESHOLD pow(2, 14)
+#define BODYCOUNT pow(2, 22)
 #define BOUNDMAG 10
 #define G 1.327 * __exp10(13) //kilometers, solar masses, (km/s)^2
 #define SOFTENING 1000000
@@ -34,6 +34,10 @@
 # ifndef DEVICE
 # define DEVICE CL_DEVICE_TYPE_DEFAULT
 # endif
+
+#define xmid c->bounds.xmax - (c->bounds.xmax - c->bounds.xmin) / 2
+#define ymid c->bounds.ymax - (c->bounds.ymax - c->bounds.ymin) / 2
+#define zmid c->bounds.zmax - (c->bounds.zmax - c->bounds.zmin) / 2
 
 
 typedef struct s_context
@@ -129,3 +133,33 @@ t_ret crunch_NxM(cl_float4 *N, cl_float4 *M, cl_float4 *V, size_t ncount, size_t
 t_ret gpu_magic(t_body **N0, t_body **M0, t_vector force_bias);
 
 int count_bodies(t_body **bodies);
+
+
+void print_bounds(t_bounds bounds);
+void print_vec(t_vector v);
+void print_body(t_body *b);
+float rand_float(float max);
+t_vector neg_vec(t_vector v);
+t_vector vadd(t_vector a, t_vector b);
+t_body *rand_body(int mag);
+
+void pair_force_cell(t_cell *i, t_cell *j);
+float multipole_acceptance_criterion(t_cell *us, t_cell *them);
+t_cell **find_inners_do_outers(t_cell *cell, t_cell *root, t_octree *t);
+t_body **bodies_from_cells(t_cell **cells);
+t_ret compute_cell(t_cell *cell, t_octree *t);
+void update(t_cell *c, t_ret r);
+
+t_cell *init_cell(t_body **bodies, t_cell *parent, t_bounds bounds);
+t_octree *init_tree(t_body **bodies, size_t n, t_bounds bounds);
+void    paint_bodies_octants(t_body **bodies, t_cell *c);
+t_body ***scoop_octants(t_body **bodies);
+void divide_cell(t_cell *c);
+void tree_it_up(t_cell *root);
+t_cell **enumerate_leaves(t_cell *root);
+
+int count_cell_array(t_cell **cells);
+int count_leaves(t_cell *root);
+t_vector center_of_mass(t_cell *c, t_body **bodies);
+int count_bodies(t_body **bodies);
+t_body **demo_bodies(size_t n, int mag);

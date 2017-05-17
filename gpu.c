@@ -145,8 +145,6 @@ t_ret crunch_NxM(cl_float4 *N, cl_float4 *V, cl_float4 *M, size_t ncount, size_t
     float grav = G;
     size_t count = ncount;
 
-    printf("global %zu local %zu\n", global, local);
-
     clSetKernelArg(k_nbody, 0, sizeof(cl_mem), &d_N_start);
     clSetKernelArg(k_nbody, 1, sizeof(cl_mem), &d_N_end);
     clSetKernelArg(k_nbody, 2, sizeof(cl_mem), &d_M);
@@ -212,6 +210,6 @@ t_ret gpu_magic(t_body **N0, t_body **M0, t_vector force_bias)
     }
     for (int i = 0; M0[i]; i++)
         M[i] = vec_to_f4(M0[i]->position);
-    printf("sending it into the crunch. ncount is %zu, mcount %zu\nnpadding %zu mpadding%zu\n", ncount, mcount, npadding, mpadding);
+    printf("crunching on GPU. ncount is %zu (+%zu), mcount %zu (+%zu)\n", ncount,npadding, mcount, mpadding);
     return(crunch_NxM(N, V, M, ncount + npadding, mcount + mpadding, fb));
 }
